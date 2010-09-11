@@ -15,7 +15,6 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
-import android.util.Log;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.widget.Button;
@@ -23,7 +22,6 @@ import android.widget.Button;
 import com.google.android.maps.GeoPoint;
 import com.google.android.maps.ItemizedOverlay;
 import com.google.android.maps.MapActivity;
-import com.google.android.maps.MapController;
 import com.google.android.maps.MapView;
 import com.google.android.maps.Overlay;
 import com.google.android.maps.OverlayItem;
@@ -32,9 +30,6 @@ public class Main extends MapActivity {
 
 	private static final double E6 = 1000000;
 	private MapView mapView;
-	private MapController mc;
-	private Button b;
-	private ArrayList<Event> mEvents;
 
 	public static final String HOST = "http://noowave.heroku.com/events.json";
 
@@ -44,27 +39,29 @@ public class Main extends MapActivity {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.main);
 
-		mapView = (MapView) findViewById(R.id.mapview1);
+		//  configure map view
+		mapView = (MapView) findViewById(R.id.mapview);
 		mapView.setBuiltInZoomControls(true);
-		mc = mapView.getController();
-		mapView.invalidate();
+		mapView.invalidate(); // update map view
 
-		Button b = (Button) findViewById(R.id.button1);
-		b.setOnClickListener(new UpdateEvents());
+		Button b = (Button) findViewById(R.id.update);
+		b.setOnClickListener(new UpdateListener());
 	}
 
-	private class UpdateEvents implements OnClickListener {
+	private class UpdateListener implements OnClickListener {
 
 		@Override
 		public void onClick(View v) {
 			try {
-				String request = new Coordinates().getLocation().toRequest();
-				HttpGet g = new HttpGet(request);
+				// request events data from site
+				String url = composeUrl();
+				HttpGet g = new HttpGet(url);
 				HttpEntity entity = new DefaultHttpClient().execute(g)
 						.getEntity();
 				String response = EntityUtils.toString(entity);
-				mEvents = parseJSON(response);
-				setOverlays(mEvents);
+				
+				ArrayList<Event> events = parseJSON(response);
+				setOverlays(events);
 			} catch (Exception e) {
 				e.printStackTrace();
 			}
@@ -92,7 +89,7 @@ public class Main extends MapActivity {
 
 	private void setOverlays(ArrayList<Event> events) {
 		List<Overlay> mapOverlays = mapView.getOverlays();
-		Drawable drawable = getResources().getDrawable(R.drawable.icon);
+		Drawable drawable = getResources().getDrawable(R.drawable.ruby);
 		EventLayer layer = new EventLayer(drawable, getApplicationContext());
 
 		for (Event e : events) {
@@ -101,36 +98,30 @@ public class Main extends MapActivity {
 			GeoPoint point = new GeoPoint(lat, lon);
 
 			StringBuffer message = new StringBuffer(256);
-			message.append("\nDATE:\n").append(e.date);
+			message.append("DATE:\n").append(e.date);
 			message.append("\nADDRESS:\n").append(e.address);
 			message.append("\nDESCRIPTION:\n").append(e.description);
-			
+
 			OverlayItem o = new OverlayItem(point, e.title, message.toString());
 			layer.addOverlay(o);
 		}
 		if (layer.mOverlays.size() > 0) {
 			mapOverlays.add(layer);
 		}
-		mapView.invalidate();
+		mapView.invalidate();  // update map view
 	}
 
-	private class Coordinates {
-		double latitude;
-		double longitude;
-		double latitudeSpan;
-		double longitudeSpan;
-
-		Coordinates getLocation() {
-			latitudeSpan = mapView.getLongitudeSpan() / E6;
-			longitudeSpan = mapView.getLatitudeSpan() / E6;
+        /**
+         * Composes URL based on visible maps area coordinates. 
+         * @return URL
+         */
+		String composeUrl() {
+			double latitudeSpan = mapView.getLongitudeSpan() / E6;
+			double longitudeSpan = mapView.getLatitudeSpan() / E6;
 			GeoPoint center = mapView.getMapCenter();
-			latitude = center.getLatitudeE6() / E6 + latitudeSpan / 2;
-			longitude = center.getLongitudeE6() / E6 - longitudeSpan / 2;
-			return this;
-
-		}
-
-		public String toRequest() {
+			double latitude = center.getLatitudeE6() / E6 + latitudeSpan / 2;
+			double longitude = center.getLongitudeE6() / E6 - longitudeSpan / 2;
+			
 			StringBuffer b = new StringBuffer(256);
 			b.append(HOST).append("?");
 			b.append("latitude=").append(latitude);
@@ -138,9 +129,9 @@ public class Main extends MapActivity {
 			b.append("&latitude_span=").append(latitudeSpan);
 			b.append("&longitude_span=").append(longitudeSpan);
 			return b.toString();
+
 		}
 
-	}
 
 	private class Event {
 		double latitude;
@@ -155,7 +146,7 @@ public class Main extends MapActivity {
 		new AlertDialog.Builder(this).setTitle(item.getTitle()).setMessage(
 				item.getSnippet()).setNeutralButton("Cancel", null).show();
 	}
-	
+
 	private class EventLayer extends ItemizedOverlay<OverlayItem> {
 		private ArrayList<OverlayItem> mOverlays = new ArrayList<OverlayItem>();
 
@@ -165,14 +156,9 @@ public class Main extends MapActivity {
 			showDescription(item);
 			return true;
 		}
-		
-		public EventLayer(Drawable defaultMarker) {
-			super(boundCenterBottom(defaultMarker));
-		}
 
 		public EventLayer(Drawable defaultMarker, Context context) {
 			super(boundCenterBottom(defaultMarker));
-
 		}
 
 		public void addOverlay(OverlayItem overlay) {
